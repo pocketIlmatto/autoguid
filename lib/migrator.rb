@@ -4,24 +4,7 @@ class Migrator < ActiveRecord::Migration
 
     def up
       begin
-        puts 'Found config' + @config.to_s
-        raise "Autoguid configuration is incomplete" unless @config[:all] || (@config[:whitelist].nil? ^ @config[:blacklist].nil?)
-        raise "Specifying both whitelist & blacklist is not supported." if @config[:whitelist] && @config[:blacklist]
-        whitelist = Migrator.all_models if @config[:all] or @config[:blacklist]
-        if ( @config[:whitelist] )
-          puts "Got into Whitelist"
-          whitelist = Array.new
-          Migrator.all_models.each do |m|
-            puts "Checking for model " + m.name + " in whitelist "
-            whitelist.push(m) if @config[:whitelist].include?(m.name)
-          end
-        elsif ( @config[:blacklist] )
-          puts "Processing by blacklist"
-          whitelist.each do |m|
-            puts "Checking for model " + m.name + " in blacklist "
-            whitelist.delete(m) if @config[:blacklist].include?(m.name)
-          end
-        end
+        whitelist = build_whitelist
         puts "whitelist"
         whitelist.each do |model|
           puts "Processing " + model.name
@@ -35,6 +18,7 @@ class Migrator < ActiveRecord::Migration
             puts model.name + " skipped."
           end
         end
+        #TODO run synch_check once it is ready
       rescue Exception => e
         puts e.message
       end
@@ -48,6 +32,47 @@ class Migrator < ActiveRecord::Migration
       end
     end
 
+    # Checks that any models that end up in the whitelist
+    # have the following:
+    # * guid column on database table
+    # * TODO include Autoguid in their model definition
+    # * reminder to backfill if either of these is missing
+    def synch_check
+      puts "Running synchronization check"
+      whitelist = build_whitelist(debug: true)
+      backfill_reminder = false
+      whitelist.each do |model|
+        backfill_reminder = false
+        backfill_reminder = true and puts "guid is missing from #{model.name} \n Run rake autoguid:migrate:up" unless column_exists?(model, :guid)
+        backfill_reminder = true and puts "#{model.name} definition doesn't include Autoguid." unless model.respond_to?('backfill')
+        puts "Run rake autoguid:migrate:backfill after completing synchronization steps" if backfill_reminder
+      end
+    end
+
+    # Builds the whitelist of models
+    def build_whitelist(options = {})
+      begin
+        puts 'Found config' + @config.to_s if options[:debug]
+        raise "Autoguid configuration is incomplete" unless @config[:all] || (@config[:whitelist].nil? ^ @config[:blacklist].nil?)
+        raise "Specifying both whitelist & blacklist is not supported." if @config[:whitelist] && @config[:blacklist]
+        whitelist = Migrator.all_models if @config[:all] or @config[:blacklist]
+        if ( @config[:whitelist] )
+          puts "Got into Whitelist" if options[:debug]
+          whitelist = Array.new
+          Migrator.all_models.each do |m|
+            puts "Checking for model " + m.name + " in whitelist " if options[:debug]
+            whitelist.push(m) if @config[:whitelist].include?(m.name)
+          end
+        elsif ( @config[:blacklist] )
+          puts "Processing by blacklist" if options[:debug]
+          whitelist.delete_if {|m| @config[:blacklist].include?(m.name)}
+        end
+      rescue Exception => e
+        puts e.message
+      end
+      whitelist
+    end
+
     def self.all_models
       Rails.application.eager_load!
       mods = Array.new
@@ -59,5 +84,4 @@ class Migrator < ActiveRecord::Migration
       end
       return mods
     end
-
 end
