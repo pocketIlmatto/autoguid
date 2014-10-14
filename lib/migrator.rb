@@ -18,7 +18,7 @@ class Migrator < ActiveRecord::Migration
             puts model.name + " skipped."
           end
         end
-        #TODO run synch_check once it is ready
+        synch_check
       rescue Exception => e
         puts e.message
       end
@@ -44,7 +44,7 @@ class Migrator < ActiveRecord::Migration
       whitelist.each do |model|
         backfill_reminder = false
         backfill_reminder = true and puts "guid is missing from #{model.name} \n Run rake autoguid:migrate:up" unless column_exists?(model, :guid)
-        backfill_reminder = true and puts "#{model.name} definition doesn't include Autoguid." unless model.respond_to?('backfill')
+        backfill_reminder = true and puts "#{model.name} definition doesn't include Autoguid." unless model.included_modules.include?('Autoguid')
         puts "Run rake autoguid:migrate:backfill after completing synchronization steps" if backfill_reminder
       end
     end
